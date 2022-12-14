@@ -1,0 +1,5 @@
+git+https://github.com/hpcaitech/EnergonAI.git
+transformers==4.21.3
+pydantic==1.10.2
+fastapi==0.88.0
+uvicorn==0.20.0

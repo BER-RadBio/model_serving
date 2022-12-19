@@ -10,6 +10,7 @@ from energonai import launch_engine, QueueFullError
 from tokenizers import Tokenizer
 from transformers import PreTrainedTokenizerFast
 from fastapi import FastAPI, HTTPException, Request
+from transformers import AutoTokenizer, AutoModelForCausalLM
 
 from model import hf_model_fn
 from batch import BatchManagerForGeneration
@@ -17,6 +18,12 @@ from batch import BatchManagerForGeneration
 app = FastAPI()
 
 MODEL = None
+
+
+def dummy_model_fn():
+    model = AutoModelForCausalLM.from_pretrained("facebook/opt-125m")
+
+    return model
 
 
 class GenerationTaskReq(BaseModel):
@@ -41,18 +48,23 @@ async def generate(data: GenerationTaskReq, request: Request):
         f'{request.client.host}:{request.client.port} - "{request.method} {request.url.path}" - {data}'
     )
 
-    inputs = tokenizer(data.prompt, truncation=True, max_length=512)
-    inputs["max_tokens"] = data.max_tokens
+    inputs = tokenizer(
+        data.prompt, truncation=True, max_length=512, return_tensors="pt"
+    )
+    inputs["max_new_tokens"] = data.max_tokens
     inputs["top_k"] = data.top_k
     inputs["top_p"] = data.top_p
     inputs["temperature"] = data.temperature
+    inputs["hf_input"] = True
     try:
         uid = id(data)
         engine.submit(uid, inputs)
         output = await engine.wait(uid)
-        output = tokenizer.decode(output, skip_special_tokens=True)
+        output = tokenizer.batch_decode(output, skip_special_tokens=True)
     except QueueFullError as e:
         raise HTTPException(status_code=406, detail=e.args[0])
+    except Exception as e:
+        logger.error(e)
 
     return {"text": output}
 
@@ -67,8 +79,8 @@ async def shutdown(*_):
 
 if __name__ == "__main__":
     parser = ArgumentParser()
-    parser.add_argument("--model_cfg", type=Path, required=True)
-    parser.add_argument("--tokenizer_file", type=Path, required=True)
+    parser.add_argument("--model_cfg", type=Path)
+    parser.add_argument("--tokenizer_file", type=Path)
     parser.add_argument("--checkpoint", type=Path, help="Path to checkpoint files")
 
     parser.add_argument("--tp", type=int, default=1)
@@ -85,13 +97,15 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    MODEL = args.model_cfg.name
+    MODEL = args.model_cfg.name if args.model_cfg else "None"
     logger = logging.getLogger(__name__)
 
-    tokenizer = PreTrainedTokenizerFast(
-        tokenizer_object=Tokenizer.from_file(str(args.tokenizer_file))
-    )
-    tokenizer.add_special_tokens({"pad_token": "[PAD]"})
+    # tokenizer = PreTrainedTokenizerFast(
+    #     tokenizer_object=Tokenizer.from_file(str(args.tokenizer_file))
+    # )
+    # tokenizer.add_special_tokens({"pad_token": "[PAD]"})
+
+    tokenizer = AutoTokenizer.from_pretrained("facebook/opt-125m")
 
     engine = launch_engine(
         args.tp,
@@ -99,10 +113,13 @@ if __name__ == "__main__":
         args.master_host,
         args.master_port,
         args.rpc_port,
-        hf_model_fn(model_cfg=args.model_cfg, tokenizer_file=args.tokenizer_file),
-        batch_manager=BatchManagerForGeneration(
-            max_batch_size=args.max_batch_size, pad_token_id=tokenizer.pad_token_id
-        ),
+        # TODO: Add the wrapper with colossal to do pipeline parallelism
+        # hf_model_fn(model_cfg=args.model_cfg, tokenizer_file=args.tokenizer_file),
+        dummy_model_fn,
+        # TODO: Fix the batch manager function
+        # batch_manager=BatchManagerForGeneration(
+        #     max_batch_size=args.max_batch_size, pad_token_id=tokenizer.pad_token_id
+        # ),
         pipe_size=args.pipe_size,
         queue_size=args.queue_size,
     )

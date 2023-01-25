@@ -29,7 +29,7 @@ class GenerationTaskReq(BaseModel):
     temperature: Optional[float] = Field(default=None, gt=0.0, lt=1.0, example=0.7)
 
 
-def get_model_name() -> Optional[str]:
+def _get_model_name() -> Optional[str]:
     if args.model_cfg is not None:
         return args.model_cfg.name
     elif args.hf_checkpoint is not None:
@@ -39,8 +39,8 @@ def get_model_name() -> Optional[str]:
 
 
 @app.get("/model")
-def get_model():
-    return get_model_name()
+def get_model_name():
+    return _get_model_name()
 
 
 @app.post("/generation")

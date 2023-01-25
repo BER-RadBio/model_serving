@@ -1,4 +1,4 @@
-git+https://github.com/hpcaitech/EnergonAI.git
+git+https://github.com/KPHippe/EnergonAI.git
 transformers==4.21.3
 pydantic==1.10.2
 fastapi==0.88.0

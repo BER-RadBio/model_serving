@@ -17,7 +17,7 @@
 # Usage 
 
 * Running on DGX machines: 
-1. Start the server: 
+1. Start the server (example command below, for the hackathon Kyle will have whatever model we want running, do not worry about this step): 
     ```
     python ms.py --hf_checkpoint /raid/khippe/hf_neox_radbio/gpt-neo-1.3B --tp 4
     ``` 
